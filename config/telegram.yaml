@@ -1,0 +1,17 @@
+version: 1
+defaults:
+  venue: binance
+  quote: USDT
+  cooldown_seconds: 60
+forward_alerts:
+  enabled: true
+  severities:
+  - warning
+price_alerts:
+  BTC:
+    enabled: true
+    venue: binance
+    symbol: BTCUSDT
+    cooldown_seconds: 60
+    percent_up: 2.0
+    percent_down: 2.0

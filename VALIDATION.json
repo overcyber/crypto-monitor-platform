@@ -1,0 +1,25 @@
+{
+  "version": "4.1.1",
+  "tests": {
+    "total": 45,
+    "passed": 45,
+    "failed": 0
+  },
+  "checks": {
+    "compileall": true,
+    "selftest": true,
+    "compose_yaml": true,
+    "clickhouse_xml": true,
+    "grafana_config": true,
+    "alerts_yaml": true,
+    "markets_yaml": true,
+    "shell_syntax": true,
+    "host_bind_mounts": true,
+    "source_not_baked": true,
+    "lakekeeper_tag_prefix_v": true,
+    "compose_serial_wrapper": true,
+    "up_pull_then_pull_never": true
+  },
+  "external_runtime_validation": false,
+  "external_runtime_validation_reason": "Docker daemon/CLI unavailable in the artifact-generation environment"
+}

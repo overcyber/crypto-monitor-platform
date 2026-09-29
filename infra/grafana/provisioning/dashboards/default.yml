@@ -1,0 +1,11 @@
+apiVersion: 1
+providers:
+  - name: crypto-monitor-v4
+    orgId: 1
+    folder: Crypto Monitor
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 15
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards

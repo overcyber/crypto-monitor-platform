@@ -1,0 +1,476 @@
+name: ${COMPOSE_PROJECT_NAME:-crypto-monitor-v4}
+
+x-python-core: &python-core
+  build:
+    context: .
+    dockerfile: docker/python-core.Dockerfile
+  image: crypto-monitor/python-core:v4
+  env_file: .env
+  working_dir: /opt/app
+  volumes:
+    - ${SRC_DIR:-./src}:/opt/app/src:ro
+    - ./scripts:/opt/app/scripts:ro
+    - ./config:/opt/app/config:ro
+  networks: [market_net]
+  restart: unless-stopped
+
+x-python-analytics: &python-analytics
+  build:
+    context: .
+    dockerfile: docker/python-analytics.Dockerfile
+  image: crypto-monitor/python-analytics:v4
+  env_file: .env
+  working_dir: /opt/app
+  volumes:
+    - ${SRC_DIR:-./src}:/opt/app/src:ro
+    - ./scripts:/opt/app/scripts:ro
+    - ./config:/opt/app/config:ro
+  networks: [market_net]
+  restart: unless-stopped
+
+services:
+  kafka:
+    image: apache/kafka:4.3.1
+    hostname: kafka
+    container_name: crypto-kafka
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: CONTROLLER://:29093,INTERNAL://:29092,EXTERNAL://:9092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://${KAFKA_EXTERNAL_HOST:-localhost}:${KAFKA_EXTERNAL_PORT:-9092}
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_MIN_INSYNC_REPLICAS: 1
+      KAFKA_NUM_PARTITIONS: ${KAFKA_PARTITIONS:-12}
+      KAFKA_LOG_RETENTION_CHECK_INTERVAL_MS: 300000
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      CLUSTER_ID: ${KAFKA_CLUSTER_ID}
+    volumes:
+      - ${KAFKA_DATA_DIR:-./data/kafka}:/var/lib/kafka/data
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${KAFKA_EXTERNAL_PORT:-9092}:9092"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:29092 --list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+    networks: [market_net]
+    restart: unless-stopped
+
+  kafka-init:
+    image: apache/kafka:4.3.1
+    depends_on:
+      kafka:
+        condition: service_healthy
+    env_file: .env
+    volumes:
+      - ./scripts:/opt/app/scripts:ro
+    entrypoint: ["/bin/bash", "/opt/app/scripts/kafka-init.sh"]
+    networks: [market_net]
+    restart: "no"
+
+  garage:
+    image: ${GARAGE_IMAGE:-dxflrs/garage:v2.4.1}
+    hostname: garage
+    command: ["/garage", "server", "--single-node", "--default-bucket", "--default-access-key"]
+    environment:
+      GARAGE_DEFAULT_ACCESS_KEY: ${S3_ACCESS_KEY}
+      GARAGE_DEFAULT_SECRET_KEY: ${S3_SECRET_KEY}
+      GARAGE_DEFAULT_BUCKET: ${ICEBERG_BUCKET}
+    volumes:
+      - ${GARAGE_CONFIG_FILE:-./data/garage/config/garage.toml}:/etc/garage.toml:ro
+      - ${GARAGE_META_DIR:-./data/garage/meta}:/var/lib/garage/meta
+      - ${GARAGE_DATA_DIR:-./data/garage/data}:/var/lib/garage/data
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${S3_API_PORT:-8333}:3900"
+    healthcheck:
+      test: ["CMD", "/garage", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+    networks: [market_net]
+    restart: unless-stopped
+
+  lakekeeper-db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: ${LAKEKEEPER_PG_USER}
+      POSTGRES_PASSWORD: ${LAKEKEEPER_PG_PASSWORD}
+      POSTGRES_DB: ${LAKEKEEPER_PG_DB}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - ${LAKEKEEPER_PG_DATA_DIR:-./data/lakekeeper-postgres}:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${LAKEKEEPER_PG_USER} -d ${LAKEKEEPER_PG_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [market_net]
+    restart: unless-stopped
+
+  lakekeeper-migrate:
+    image: quay.io/lakekeeper/catalog:${LAKEKEEPER_VERSION:-v0.13.6}
+    depends_on:
+      lakekeeper-db:
+        condition: service_healthy
+    environment: &lakekeeper-env
+      LAKEKEEPER__PG_ENCRYPTION_KEY: ${LAKEKEEPER_ENCRYPTION_KEY}
+      LAKEKEEPER__PG_DATABASE_URL_READ: postgresql://${LAKEKEEPER_PG_USER}:${LAKEKEEPER_PG_PASSWORD}@lakekeeper-db:5432/${LAKEKEEPER_PG_DB}
+      LAKEKEEPER__PG_DATABASE_URL_WRITE: postgresql://${LAKEKEEPER_PG_USER}:${LAKEKEEPER_PG_PASSWORD}@lakekeeper-db:5432/${LAKEKEEPER_PG_DB}
+      LAKEKEEPER__AUTHZ_BACKEND: allowall
+      RUST_LOG: info
+    command: ["migrate"]
+    networks: [market_net]
+    restart: "no"
+
+  lakekeeper:
+    image: quay.io/lakekeeper/catalog:${LAKEKEEPER_VERSION:-v0.13.6}
+    depends_on:
+      lakekeeper-migrate:
+        condition: service_completed_successfully
+      garage:
+        condition: service_healthy
+    environment: *lakekeeper-env
+    command: ["serve"]
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${LAKEKEEPER_PORT:-8181}:8181"
+    healthcheck:
+      test: ["CMD", "/home/nonroot/lakekeeper", "healthcheck"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    networks: [market_net]
+    restart: unless-stopped
+
+  lakekeeper-bootstrap:
+    image: curlimages/curl:8.12.1
+    depends_on:
+      lakekeeper:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command: >-
+      code=$$(curl -s -o /tmp/bootstrap.out -w '%{http_code}'
+      -X POST http://lakekeeper:8181/management/v1/bootstrap
+      -H 'Content-Type: application/json'
+      --data '{"accept-terms-of-use":true}');
+      if [ "$$code" = "200" ] || [ "$$code" = "204" ] || [ "$$code" = "409" ] || grep -q "CatalogAlreadyBootstrapped" /tmp/bootstrap.out; then
+        echo "Lakekeeper bootstrap ready status=$$code"; exit 0;
+      fi;
+      cat /tmp/bootstrap.out; exit 1
+    networks: [market_net]
+    restart: "no"
+
+  lakekeeper-warehouse:
+    image: curlimages/curl:8.12.1
+    depends_on:
+      lakekeeper-bootstrap:
+        condition: service_completed_successfully
+      garage:
+        condition: service_healthy
+    env_file: .env
+    volumes:
+      - ./scripts:/opt/app/scripts:ro
+    entrypoint: ["/bin/sh", "/opt/app/scripts/lakekeeper-init.sh"]
+    networks: [market_net]
+    restart: "no"
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:26.8
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-market}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-market_app}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+      CLICKHOUSE_GRAFANA_PASSWORD: ${CLICKHOUSE_GRAFANA_PASSWORD}
+    volumes:
+      - ${CLICKHOUSE_DATA_DIR:-./data/clickhouse}:/var/lib/clickhouse
+      - ${CLICKHOUSE_LOG_DIR:-./data/clickhouse-logs}:/var/log/clickhouse-server
+      - ./infra/clickhouse/config.d:/etc/clickhouse-server/config.d:ro
+      - ./infra/clickhouse/users.d:/etc/clickhouse-server/users.d:rw
+      - ./infra/clickhouse/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${CLICKHOUSE_HTTP_PORT:-8123}:8123"
+    healthcheck:
+      test: ["CMD-SHELL", 'clickhouse-client --user "$$CLICKHOUSE_USER" --password "$$CLICKHOUSE_PASSWORD" --query "SELECT 1" >/dev/null']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks: [market_net]
+    restart: unless-stopped
+
+  clickhouse-schema-sync:
+    image: clickhouse/clickhouse-server:26.8
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    env_file: .env
+    volumes:
+      - ./infra/clickhouse/init:/opt/app/clickhouse-init:ro
+      - ./scripts:/opt/app/scripts:ro
+    entrypoint: ["/bin/bash", "/opt/app/scripts/clickhouse-schema-sync.sh"]
+    networks: [market_net]
+    restart: "no"
+
+  clickhouse-retention-init:
+    image: clickhouse/clickhouse-server:26.8
+    depends_on:
+      clickhouse-schema-sync:
+        condition: service_completed_successfully
+    env_file: .env
+    volumes:
+      - ./scripts:/opt/app/scripts:ro
+    entrypoint: ["/bin/bash", "/opt/app/scripts/clickhouse-retention.sh"]
+    networks: [market_net]
+    restart: "no"
+
+  flink-jobmanager:
+    build:
+      context: .
+      dockerfile: docker/flink-runtime.Dockerfile
+    image: crypto-monitor/flink-runtime:v4
+    command: jobmanager
+    environment:
+      JOB_MANAGER_RPC_ADDRESS: flink-jobmanager
+    volumes:
+      - ./infra/flink/conf/flink-conf.yaml:/opt/flink/conf/flink-conf.yaml:ro
+      - ${FLINK_CHECKPOINT_DIR:-./data/flink/checkpoints}:/opt/flink/checkpoints
+      - ${FLINK_SAVEPOINT_DIR:-./data/flink/savepoints}:/opt/flink/savepoints
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${FLINK_UI_PORT:-8083}:8081"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8081/overview >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    depends_on:
+      kafka:
+        condition: service_healthy
+      lakekeeper-warehouse:
+        condition: service_completed_successfully
+    networks: [market_net]
+    restart: unless-stopped
+
+  flink-taskmanager:
+    image: crypto-monitor/flink-runtime:v4
+    build:
+      context: .
+      dockerfile: docker/flink-runtime.Dockerfile
+    command: taskmanager
+    environment:
+      JOB_MANAGER_RPC_ADDRESS: flink-jobmanager
+    volumes:
+      - ./infra/flink/conf/flink-conf.yaml:/opt/flink/conf/flink-conf.yaml:ro
+      - ${FLINK_CHECKPOINT_DIR:-./data/flink/checkpoints}:/opt/flink/checkpoints
+      - ${FLINK_SAVEPOINT_DIR:-./data/flink/savepoints}:/opt/flink/savepoints
+    depends_on:
+      flink-jobmanager:
+        condition: service_healthy
+    networks: [market_net]
+    restart: unless-stopped
+
+  flink-job-supervisor:
+    image: crypto-monitor/flink-runtime:v4
+    build:
+      context: .
+      dockerfile: docker/flink-runtime.Dockerfile
+    env_file: .env
+    volumes:
+      - ./infra/flink/jobs:/opt/app/flink/jobs:ro
+      - ./scripts:/opt/app/scripts:ro
+    entrypoint: ["/bin/bash", "/opt/app/scripts/flink-job-supervisor.sh"]
+    depends_on:
+      flink-jobmanager:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+      lakekeeper-warehouse:
+        condition: service_completed_successfully
+    networks: [market_net]
+    restart: unless-stopped
+
+  ingestor-binance:
+    <<: *python-core
+    command: ["python", "-m", "src.ingestors.binance"]
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+
+  ingestor-coinbase:
+    <<: *python-core
+    command: ["python", "-m", "src.ingestors.coinbase"]
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+
+  book-worker:
+    <<: *python-core
+    command: ["python", "-m", "src.book_worker.service"]
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+
+  alert-worker:
+    <<: *python-core
+    command: ["python", "-m", "src.alert_worker.service"]
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+
+  telegram-bot:
+    <<: *python-core
+    volumes:
+      - ${SRC_DIR:-./src}:/opt/app/src:ro
+      - ./scripts:/opt/app/scripts:ro
+      - ./config:/opt/app/config:rw
+      - ${TELEGRAM_DATA_DIR:-./data/telegram}:/opt/app/data/telegram
+    command: ["python", "-m", "src.telegram_bot.service"]
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      monitor-api:
+        condition: service_started
+
+  candle-worker:
+    <<: *python-core
+    command: ["python", "-m", "src.candle_worker.service"]
+    depends_on:
+      clickhouse-retention-init:
+        condition: service_completed_successfully
+
+  replay-book-worker:
+    <<: *python-core
+    environment:
+      BOOK_INPUT_TOPIC: market.replay
+      BOOK_OUTPUT_TOPIC: market.replay.microstructure
+      BOOK_GROUP_ID: replay-book-worker-v4
+    command: ["python", "-m", "src.book_worker.service"]
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+
+  monitor-api:
+    <<: *python-core
+    command: ["/opt/app/scripts/run-api.sh", "src.monitor_api.main:app", "8081"]
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${MONITOR_API_PORT:-8081}:8081"
+    depends_on:
+      clickhouse-schema-sync:
+        condition: service_completed_successfully
+
+  analytics-api:
+    <<: *python-analytics
+    command: ["/opt/app/scripts/run-api.sh", "src.analytics_api.main:app", "8082"]
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${ANALYTICS_API_PORT:-8082}:8082"
+    depends_on:
+      clickhouse-schema-sync:
+        condition: service_completed_successfully
+
+  web-ui:
+    <<: *python-core
+    volumes:
+      - ${SRC_DIR:-./src}:/opt/app/src:ro
+      - ./scripts:/opt/app/scripts:ro
+      - ./config:/opt/app/config:rw
+    command: ["/opt/app/scripts/run-api.sh", "src.web_ui.main:app", "8090"]
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${WEB_UI_PORT:-8090}:8090"
+    depends_on:
+      clickhouse-schema-sync:
+        condition: service_completed_successfully
+      flink-jobmanager:
+        condition: service_healthy
+
+  reconciler:
+    <<: *python-analytics
+    volumes:
+      - ${SRC_DIR:-./src}:/opt/app/src:ro
+      - ./scripts:/opt/app/scripts:ro
+      - ${RECONCILE_DATA_DIR:-./data/reconcile}:/opt/app/data/reconcile
+    command: ["python", "-m", "src.reconcile.service"]
+    depends_on:
+      clickhouse-schema-sync:
+        condition: service_completed_successfully
+      lakekeeper-warehouse:
+        condition: service_completed_successfully
+
+  replay-api:
+    <<: *python-analytics
+    volumes:
+      - ${SRC_DIR:-./src}:/opt/app/src:ro
+      - ./scripts:/opt/app/scripts:ro
+      - ${REPLAY_DATA_DIR:-./data/replay}:/opt/app/data/replay
+    command: ["/opt/app/scripts/run-api.sh", "src.replay.main:app", "8084"]
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${REPLAY_API_PORT:-8084}:8084"
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      lakekeeper-warehouse:
+        condition: service_completed_successfully
+
+  grafana:
+    image: grafana/grafana:12.4.10
+    env_file: .env
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_INSTALL_PLUGINS: grafana-clickhouse-datasource 4.21.3
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ${GRAFANA_DATA_DIR:-./data/grafana}:/var/lib/grafana
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${GRAFANA_PORT:-3000}:3000"
+    depends_on:
+      clickhouse-schema-sync:
+        condition: service_completed_successfully
+    networks: [market_net]
+    restart: unless-stopped
+
+  tests:
+    <<: *python-core
+    profiles: [test]
+    volumes:
+      - ${SRC_DIR:-./src}:/opt/app/src:ro
+      - ./tests:/opt/app/tests:ro
+      - ./scripts:/opt/app/scripts:ro
+      - ./config:/opt/app/config:ro
+      - ./docker-compose.yml:/opt/app/docker-compose.yml:ro
+      - ./.dockerignore:/opt/app/.dockerignore:ro
+      - ./infra:/opt/app/infra:ro
+      - ./docker:/opt/app/docker:ro
+    command: ["python", "-m", "unittest", "discover", "-s", "tests", "-v"]
+    restart: "no"
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:v0.7.2
+    profiles: [tools]
+    environment:
+      KAFKA_CLUSTERS_0_NAME: crypto-monitor
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:8085:8080"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks: [market_net]
+    restart: unless-stopped
+
+networks:
+  market_net:
+    driver: bridge

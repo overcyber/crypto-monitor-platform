@@ -1,0 +1,26 @@
+version: 1
+reload_seconds: 5
+watchlist:
+- BTC
+- ETH
+- SOL
+- XMR
+sources:
+  binance:
+    enabled: true
+    quote: USDT
+    products: []
+    channels:
+    - depth
+    - trade
+    - book_ticker
+    depth_interval: 100ms
+    snapshot_limit: 1000
+  coinbase:
+    enabled: true
+    quote: USD
+    products: []
+    channels:
+    - level2
+    - matches
+    - ticker

@@ -1,0 +1,2 @@
+# Optional cross-check backend. Install only if a wheel/toolchain is available.
+TA-Lib>=0.6,<0.7

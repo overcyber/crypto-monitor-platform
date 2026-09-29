@@ -1,0 +1,23 @@
+<clickhouse>
+    <profiles>
+        <default>
+            <async_insert>1</async_insert>
+            <wait_for_async_insert>1</wait_for_async_insert>
+            <max_partitions_per_insert_block>100</max_partitions_per_insert_block>
+        </default>
+        <grafana_readonly>
+            <readonly>1</readonly>
+            <max_execution_time>60</max_execution_time>
+        </grafana_readonly>
+    </profiles>
+    <users>
+        <grafana_reader>
+            <password from_env="CLICKHOUSE_GRAFANA_PASSWORD"/>
+            <networks>
+                <ip>::/0</ip>
+            </networks>
+            <profile>grafana_readonly</profile>
+            <quota>default</quota>
+        </grafana_reader>
+    </users>
+</clickhouse>

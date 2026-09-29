@@ -1,0 +1,14 @@
+# Never send persistent datasets or bind-mounted source in Docker build context.
+data/
+src/
+tests/
+docs/
+infra/
+.git/
+.gitignore
+*.zip
+*.sha256
+**/__pycache__/
+**/*.pyc
+.pytest_cache/
+.venv/

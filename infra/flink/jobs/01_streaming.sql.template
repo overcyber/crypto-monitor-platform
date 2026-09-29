@@ -1,0 +1,181 @@
+SET 'execution.runtime-mode' = 'streaming';
+SET 'execution.checkpointing.interval' = '30s';
+SET 'table.exec.iceberg.use-v2-sink' = 'true';
+SET 'flink-maintenance.rewrite.enabled' = 'true';
+SET 'flink-maintenance.rewrite.schedule.commit-count' = '20';
+SET 'flink-maintenance.rewrite.schedule.data-file-count' = '100';
+SET 'flink-maintenance.rewrite.schedule.interval-second' = '900';
+SET 'flink-maintenance.rewrite.max-bytes' = '2147483648';
+SET 'flink-maintenance.rewrite.partial-progress.enabled' = 'true';
+SET 'flink-maintenance.rewrite.partial-progress.max-commits' = '5';
+SET 'flink-maintenance.expire-snapshots.enabled' = 'true';
+SET 'flink-maintenance.expire-snapshots.schedule.commit-count' = '120';
+SET 'flink-maintenance.expire-snapshots.schedule.interval-second' = '3600';
+SET 'flink-maintenance.expire-snapshots.max-snapshot-age-seconds' = '${ICEBERG_SNAPSHOT_MAX_AGE_SECONDS}';
+SET 'flink-maintenance.expire-snapshots.retain-last' = '${ICEBERG_MIN_SNAPSHOTS_TO_KEEP}';
+SET 'flink-maintenance.delete-orphan-files.enabled' = 'true';
+SET 'flink-maintenance.delete-orphan-files.min-age-seconds' = '${ICEBERG_ORPHAN_MIN_AGE_SECONDS}';
+SET 'flink-maintenance.delete-orphan-files.schedule.interval-second' = '21600';
+SET 'execution.checkpointing.mode' = 'EXACTLY_ONCE';
+SET 'execution.checkpointing.min-pause' = '5s';
+SET 'execution.checkpointing.timeout' = '2min';
+SET 'execution.checkpointing.max-concurrent-checkpoints' = '1';
+SET 'pipeline.name' = 'market-raw-to-iceberg-and-clean-v4';
+
+CREATE TABLE market_raw (
+    schema_version INT,
+    event_id STRING,
+    source_id STRING,
+    venue STRING,
+    channel STRING,
+    event_type STRING,
+    symbol STRING,
+    sequence_id BIGINT,
+    first_sequence_id BIGINT,
+    event_time_ms BIGINT,
+    ingest_time_ms BIGINT,
+    price DOUBLE,
+    quantity DOUBLE,
+    side STRING,
+    bid_price DOUBLE,
+    bid_quantity DOUBLE,
+    ask_price DOUBLE,
+    ask_quantity DOUBLE,
+    bids_json STRING,
+    asks_json STRING,
+    raw_payload STRING,
+    metadata_json STRING
+) WITH (
+    'connector' = 'kafka',
+    'topic' = 'market.raw',
+    'properties.bootstrap.servers' = '${KAFKA_BOOTSTRAP}',
+    'properties.group.id' = 'flink-raw-v4',
+    'scan.startup.mode' = 'earliest-offset',
+    'properties.isolation.level' = 'read_committed',
+    'format' = 'json',
+    'json.fail-on-missing-field' = 'false',
+    'json.ignore-parse-errors' = 'false'
+);
+
+CREATE TABLE market_cleaned_sink (
+    routing_key STRING,
+    schema_version INT,
+    event_id STRING,
+    source_id STRING,
+    venue STRING,
+    channel STRING,
+    event_type STRING,
+    symbol STRING,
+    sequence_id BIGINT,
+    first_sequence_id BIGINT,
+    event_time_ms BIGINT,
+    ingest_time_ms BIGINT,
+    price DOUBLE,
+    quantity DOUBLE,
+    side STRING,
+    bid_price DOUBLE,
+    bid_quantity DOUBLE,
+    ask_price DOUBLE,
+    ask_quantity DOUBLE,
+    bids_json STRING,
+    asks_json STRING,
+    raw_payload STRING,
+    metadata_json STRING
+) WITH (
+    'connector' = 'kafka',
+    'topic' = 'market.cleaned',
+    'properties.bootstrap.servers' = '${KAFKA_BOOTSTRAP}',
+    'key.format' = 'raw',
+    'key.fields' = 'routing_key',
+    'value.format' = 'json',
+    'value.fields-include' = 'EXCEPT_KEY',
+    'sink.partitioner' = 'default',
+    'sink.delivery-guarantee' = 'at-least-once'
+);
+
+CREATE CATALOG lakehouse WITH (
+    'type' = 'iceberg',
+    'catalog-type' = 'rest',
+    'uri' = 'http://lakekeeper:8181/catalog',
+    'warehouse' = '${ICEBERG_WAREHOUSE}',
+    'io-impl' = 'org.apache.iceberg.aws.s3.S3FileIO',
+    's3.endpoint' = '${S3_ENDPOINT}',
+    's3.access-key-id' = '${S3_ACCESS_KEY}',
+    's3.secret-access-key' = '${S3_SECRET_KEY}',
+    's3.path-style-access' = 'true',
+    's3.region' = '${S3_REGION}',
+    's3.chunked-encoding-enabled' = 'false'
+);
+
+CREATE DATABASE IF NOT EXISTS lakehouse.market;
+
+CREATE TABLE IF NOT EXISTS lakehouse.market.raw_events (
+    schema_version INT,
+    event_id STRING,
+    source_id STRING,
+    venue STRING,
+    channel STRING,
+    event_type STRING,
+    symbol STRING,
+    sequence_id BIGINT,
+    first_sequence_id BIGINT,
+    event_time TIMESTAMP_LTZ(3),
+    event_time_ms BIGINT,
+    ingest_time_ms BIGINT,
+    event_date DATE,
+    price DOUBLE,
+    quantity DOUBLE,
+    side STRING,
+    bid_price DOUBLE,
+    bid_quantity DOUBLE,
+    ask_price DOUBLE,
+    ask_quantity DOUBLE,
+    bids_json STRING,
+    asks_json STRING,
+    raw_payload STRING,
+    metadata_json STRING
+)
+PARTITIONED BY (event_date, venue)
+WITH (
+    'format-version' = '2',
+    'write.format.default' = 'parquet',
+    'write.target-file-size-bytes' = '268435456',
+    'write.parquet.compression-codec' = 'zstd',
+    'write.distribution-mode' = 'hash',
+    'write.metadata.delete-after-commit.enabled' = 'true',
+    'write.metadata.previous-versions-max' = '50'
+);
+
+EXECUTE STATEMENT SET
+BEGIN
+    INSERT INTO lakehouse.market.raw_events
+    SELECT
+        schema_version, event_id, source_id, venue, channel, event_type, symbol,
+        sequence_id, first_sequence_id,
+        TO_TIMESTAMP_LTZ(event_time_ms, 3) AS event_time,
+        event_time_ms, ingest_time_ms,
+        CAST(TO_TIMESTAMP_LTZ(event_time_ms, 3) AS DATE) AS event_date,
+        price, quantity, side, bid_price, bid_quantity, ask_price, ask_quantity,
+        bids_json, asks_json, raw_payload, metadata_json
+    FROM market_raw;
+
+    INSERT INTO market_cleaned_sink
+    SELECT
+        CONCAT(LOWER(TRIM(venue)), ':', UPPER(TRIM(symbol))) AS routing_key,
+        schema_version, event_id, source_id,
+        LOWER(TRIM(venue)) AS venue,
+        LOWER(TRIM(channel)) AS channel,
+        LOWER(TRIM(event_type)) AS event_type,
+        UPPER(TRIM(symbol)) AS symbol,
+        sequence_id, first_sequence_id, event_time_ms, ingest_time_ms,
+        price, quantity, LOWER(TRIM(side)) AS side,
+        bid_price, bid_quantity, ask_price, ask_quantity,
+        COALESCE(bids_json, '[]'), COALESCE(asks_json, '[]'),
+        raw_payload, COALESCE(metadata_json, '{}')
+    FROM market_raw
+    WHERE event_id IS NOT NULL
+      AND venue IS NOT NULL
+      AND event_type IS NOT NULL
+      AND symbol IS NOT NULL
+      AND event_time_ms > 0;
+END;

@@ -1,0 +1,40 @@
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Persistent data directories
+# Data contents are excluded from git.
+# Run 'make init-data' or 'make bootstrap' to initialize the required directory structure.
+data/**
+!data/
+!data/**/.gitkeep
+
+# Logs and runtime traces
+*.log
+clickhouse-logs/
+/tmp/
+
+# Python cache & virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+env/
+venv/
+
+# Archives, patches & local backups
+*.tar.gz
+*.tar
+*.zip
+*.bak
+config/.web-ui-backups/
+crypto-monitor-flink-fix-*
+
+# OS & IDE metadata
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~

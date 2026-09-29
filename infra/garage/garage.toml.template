@@ -1,0 +1,16 @@
+metadata_dir = "/var/lib/garage/meta"
+data_dir = "/var/lib/garage/data"
+db_engine = "sqlite"
+metadata_auto_snapshot_interval = "6h"
+
+replication_factor = 1
+compression_level = 2
+
+rpc_bind_addr = "0.0.0.0:3901"
+rpc_public_addr = "garage:3901"
+rpc_secret = "__GARAGE_RPC_SECRET__"
+
+[s3_api]
+s3_region = "__S3_REGION__"
+api_bind_addr = "0.0.0.0:3900"
+root_domain = ".s3.garage"

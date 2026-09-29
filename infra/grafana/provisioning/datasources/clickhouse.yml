@@ -1,0 +1,20 @@
+apiVersion: 1
+datasources:
+  - name: ClickHouse
+    uid: clickhouse-market
+    type: grafana-clickhouse-datasource
+    access: proxy
+    isDefault: true
+    jsonData:
+      host: clickhouse
+      port: 9000
+      protocol: native
+      username: grafana_reader
+      defaultDatabase: ${CLICKHOUSE_DB}
+      secure: false
+      tlsSkipVerify: false
+      queryTimeout: 60
+      dialTimeout: 10
+      validateSql: true
+    secureJsonData:
+      password: ${CLICKHOUSE_GRAFANA_PASSWORD}

@@ -1,0 +1,37 @@
+# Regras são recarregadas sem rebuild; reiniciar alert-worker não é necessário ao editar este arquivo.
+# source: market | microstructure
+# operator: gt | gte | lt | lte | abs_gt | abs_gte
+rules:
+  - id: btc-large-trade
+    enabled: true
+    source: market
+    venue: binance
+    symbol: BTCUSDT
+    event_type: trade
+    field: quantity
+    operator: gte
+    value: 5.0
+    cooldown_seconds: 60
+    severity: warning
+
+  - id: btc-wide-spread
+    enabled: true
+    source: microstructure
+    venue: binance
+    symbol: BTCUSDT
+    field: spread_bps
+    operator: gte
+    value: 8.0
+    cooldown_seconds: 30
+    severity: warning
+
+  - id: btc-ofi-shock
+    enabled: true
+    source: microstructure
+    venue: binance
+    symbol: BTCUSDT
+    field: ofi
+    operator: abs_gte
+    value: 25.0
+    cooldown_seconds: 30
+    severity: critical

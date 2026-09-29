@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Crypto Monitor Control Center</title>
+<style>
+:root{--bg:#0b1117;--panel:#111a24;--panel2:#172230;--text:#e8eef5;--muted:#8fa3b8;--line:#26384b;--good:#36d399;--bad:#fb7185;--warn:#fbbf24;--accent:#60a5fa}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}header{position:sticky;top:0;z-index:5;background:#0b1117ee;border-bottom:1px solid var(--line);padding:14px 20px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}h1{font-size:18px;margin:0 18px 0 0}h3{font-size:14px;margin:10px 0}select,input,button,textarea{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:7px;padding:8px 10px}textarea{width:100%;min-height:70px;resize:vertical}input[type=checkbox]{accent-color:var(--accent)}button{cursor:pointer}button:hover{border-color:var(--accent)}button.danger{border-color:#7f1d1d;color:#fecaca}button.primary{border-color:var(--accent)}main{padding:18px;max-width:1800px;margin:auto}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px}.card,.section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}.card .label{color:var(--muted);font-size:12px}.card .value{font-size:21px;font-weight:650;margin-top:5px;word-break:break-word}.section{margin-bottom:16px;overflow:auto}.section h2{font-size:15px;margin:0 0 12px}.muted{color:var(--muted)}.good{color:var(--good)}.bad{color:var(--bad)}.warn{color:var(--warn)}table{width:100%;border-collapse:collapse;min-width:700px}th,td{text-align:left;border-bottom:1px solid var(--line);padding:8px;white-space:nowrap}th{color:var(--muted);font-size:12px}pre{white-space:pre-wrap;word-break:break-word;background:#091018;padding:10px;border-radius:7px;max-height:420px;overflow:auto}svg{width:100%;height:240px;background:#091018;border-radius:8px;display:block}.chart-meta{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:7px;color:var(--muted);font-size:12px}.chart-wrap{min-height:275px}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}.tabs button.active{border-color:var(--accent);color:#fff}.tab{display:none}.tab.active{display:block}.pill{display:inline-block;padding:3px 7px;border-radius:999px;background:var(--panel2);border:1px solid var(--line);font-size:12px}.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}.form-grid label{display:flex;flex-direction:column;gap:5px;color:var(--muted)}.form-grid label.check{flex-direction:row;align-items:center;color:var(--text);padding-top:26px}.config-row{display:grid;grid-template-columns:1.2fr .6fr .8fr .8fr 1fr .8fr .7fr .7fr .7fr auto;gap:6px;margin-bottom:6px;align-items:center}.config-row input,.config-row select{min-width:0;width:100%}.price-row{display:grid;grid-template-columns:.7fr .5fr .7fr 1fr .7fr .7fr .8fr .8fr .7fr auto;gap:6px;margin-bottom:6px;align-items:center}.statusline{padding:8px 10px;border-radius:7px;background:#091018;margin:8px 0}.small{font-size:12px}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}@media(max-width:1050px){.two{grid-template-columns:1fr}.config-row,.price-row{grid-template-columns:1fr 1fr}.config-row button,.price-row button{grid-column:span 2}}
+</style>
+</head>
+<body>
+<header>
+<h1>Crypto Monitor Control Center</h1>
+<div class="toolbar">
+<label>Ativo <select id="symbol"><option value="BTC" selected>BTC</option></select></label>
+<label>Venue <select id="venue"><option>binance</option><option>coinbase</option></select></label>
+<label>Intervalo <select id="interval"><option selected>1m</option><option>5m</option><option>15m</option><option>1h</option><option>4h</option><option>1d</option></select></label>
+<label>Período histórico <select id="historyDays"><option value="1" selected>1 dia</option><option value="3">3 dias</option><option value="7">7 dias</option><option value="14">14 dias</option><option value="30">30 dias</option><option value="60">60 dias</option><option value="90">90 dias</option></select></label>
+<button onclick="refreshAll()">Atualizar</button><span id="updated" class="muted"></span>
+</div>
+</header>
+<main>
+<div class="tabs"><button class="active" data-tab="market">Mercado</button><button data-tab="analytics">Analytics</button><button data-tab="pipeline">Pipeline</button><button data-tab="alerts">Alertas</button><button data-tab="config">Configuração</button></div>
+
+<section id="market" class="tab active">
+<div id="quoteCards" class="grid"></div>
+<div class="section chart-wrap"><h2>Histórico recente</h2><svg id="spark" viewBox="0 0 1000 220" preserveAspectRatio="none"></svg><div id="sparkMeta" class="chart-meta"><span>Aguardando histórico…</span></div></div>
+<div class="section"><h2>Cotações atuais</h2><div id="quotes"></div></div>
+</section>
+
+<section id="analytics" class="tab">
+<div id="analyticsCards" class="grid"></div>
+<div class="two"><div class="section"><h2>Indicadores / volatilidade</h2><pre id="analyticsRaw"></pre></div><div class="section"><h2>Microestrutura</h2><pre id="microRaw"></pre></div></div>
+<div class="section"><h2>Correlação</h2><div class="toolbar"><input id="corrSymbols" value="ETHUSDT,SOLUSDT" size="28"><button onclick="loadCorrelation()">Calcular</button></div><pre id="correlation"></pre></div>
+</section>
+
+<section id="pipeline" class="tab">
+<div id="serviceCards" class="grid"></div>
+<div class="section"><h2>Flink</h2><div id="flink"></div></div>
+<div class="section"><h2>Kafka</h2><div id="kafka"></div></div>
+<div class="section"><h2>Inventário de dados</h2><div id="inventory"></div></div>
+<div class="section"><h2>Armazenamento ClickHouse</h2><div id="storage"></div></div>
+<div class="section"><h2>Distribuição de eventos</h2><div id="distribution"></div></div>
+<div class="section"><h2>Candles</h2><div id="candles"></div></div>
+<div class="section"><h2>Microestrutura armazenada</h2><div id="microStore"></div></div>
+</section>
+
+<section id="alerts" class="tab">
+<div class="two"><div class="section"><h2>Alertas recentes</h2><div id="alertsTable"></div></div><div class="section"><h2>Reconciliação stream × batch</h2><div id="recon"></div></div></div>
+</section>
+
+<section id="config" class="tab">
+<div id="configStatus" class="statusline muted">Carregando configuração…</div>
+<div id="adminTokenBox" class="section" style="display:none"><h2>Autorização para alterar configuração</h2><div class="form-grid"><label>WEB UI admin token<input id="adminToken" type="password" autocomplete="off" placeholder="WEB_UI_ADMIN_TOKEN"></label></div><p class="muted small">O token fica apenas nesta sessão do navegador e é enviado no header X-Admin-Token.</p></div>
+<div class="section">
+<h2>Mercados monitorados</h2>
+<div class="form-grid">
+<label>Watchlist (separada por vírgula)<input id="cfgWatchlist" placeholder="BTC,ETH,SOL"></label>
+<label>Reload (segundos)<input id="cfgReload" type="number" min="1" max="3600"></label>
+</div>
+<h3>Binance</h3>
+<div class="form-grid">
+<label class="check"><input id="cfgBinanceEnabled" type="checkbox"> habilitada</label>
+<label>Quote<input id="cfgBinanceQuote"></label>
+<label>Produtos explícitos<input id="cfgBinanceProducts" placeholder="vazio = watchlist"></label>
+<label>Canais<input id="cfgBinanceChannels"></label>
+<label>Depth interval<input id="cfgBinanceDepth"></label>
+<label>Snapshot limit<input id="cfgBinanceSnapshot" type="number"></label>
+</div>
+<h3>Coinbase</h3>
+<div class="form-grid">
+<label class="check"><input id="cfgCoinbaseEnabled" type="checkbox"> habilitada</label>
+<label>Quote<input id="cfgCoinbaseQuote"></label>
+<label>Produtos explícitos<input id="cfgCoinbaseProducts" placeholder="vazio = watchlist"></label>
+<label>Canais<input id="cfgCoinbaseChannels"></label>
+</div>
+<div class="actions"><button class="primary" onclick="saveMarkets()">Salvar mercados</button></div>
+<p class="muted small">Os ingestors recarregam markets.yaml automaticamente.</p>
+</div>
+
+<div class="section">
+<h2>Regras de alerta do sistema</h2>
+<div class="muted small">source: market/microstructure · operadores: gt, gte, lt, lte, abs_gt, abs_gte</div>
+<div id="alertRules"></div>
+<div class="actions"><button onclick="addAlertRule()">Adicionar regra</button><button class="primary" onclick="saveAlerts()">Salvar alertas</button></div>
+<p class="muted small">O alert-worker recarrega alerts.yaml automaticamente.</p>
+</div>
+
+<div class="section">
+<h2>Telegram</h2>
+<div id="telegramRuntime" class="statusline"></div>
+<div class="form-grid">
+<label>Venue padrão<input id="tgVenue"></label>
+<label>Quote padrão<input id="tgQuote"></label>
+<label>Cooldown padrão (s)<input id="tgCooldown" type="number" min="0"></label>
+<label class="check"><input id="tgForwardEnabled" type="checkbox"> encaminhar alertas do sistema</label>
+<label>Severidades encaminhadas<input id="tgSeverities" placeholder="critical,warning"></label>
+</div>
+<h3>Alertas de preço / percentual</h3>
+<div id="priceRules"></div>
+<div class="actions"><button onclick="addPriceRule()">Adicionar alerta de preço</button><button class="primary" onclick="saveTelegram()">Salvar Telegram</button></div>
+<p class="muted small">Token e chat IDs não são exibidos nem alterados pela Web UI; permanecem no .env.</p>
+</div>
+
+<div class="section">
+<h2>Web UI / segurança de configuração</h2>
+<div id="webUiRuntime"></div>
+<div class="actions"><button onclick="loadConfig(true)">Recarregar configuração do disco</button></div>
+<p class="muted small">Antes de cada gravação, é criado backup em config/.web-ui-backups/.</p>
+</div>
+</section>
+</main>
+<script>
+const $=id=>document.getElementById(id);const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let configDirty=false;
+const historyCache=new Map();let lastQuotes=[];let marketSeq=0;let analyticsSeq=0;let fastBusy=false;let fastPending=false;let systemBusy=false;let alertsBusy=false;
+async function api(u,opt={}){try{const r=await fetch(u,opt);let d;try{d=await r.json()}catch{d={error:await r.text()}}if(!r.ok)return {error:d.detail||d.error||`HTTP ${r.status}`,status:r.status};return d}catch(e){return {error:String(e)}}}
+function writeOpts(payload){const token=$('adminToken')?.value||sessionStorage.getItem('cryptoAdminToken')||'';if(token)sessionStorage.setItem('cryptoAdminToken',token);const headers={'Content-Type':'application/json'};if(token)headers['X-Admin-Token']=token;return {method:'PUT',headers,body:JSON.stringify(payload)}}
+function fmt(v,d=4){if(v===null||v===undefined)return '—';if(typeof v==='number')return v.toLocaleString('pt-BR',{maximumFractionDigits:d});return String(v)}
+function table(rows){if(!Array.isArray(rows)||!rows.length)return '<span class="muted">Sem dados</span>';const ks=Object.keys(rows[0]);return '<table><thead><tr>'+ks.map(k=>`<th>${esc(k)}</th>`).join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+ks.map(k=>`<td>${esc(fmt(r[k],8))}</td>`).join('')+'</tr>').join('')+'</tbody></table>'}
+function cards(items){return items.map(x=>`<div class="card"><div class="label">${esc(x[0])}</div><div class="value ${x[2]||''}">${esc(x[1])}</div></div>`).join('')}
+function csv(v){return Array.isArray(v)?v.join(','):''} function splitCsv(v){return String(v||'').split(',').map(x=>x.trim()).filter(Boolean)} function numOrNull(v){return String(v).trim()===''?null:Number(v)}
+function baseAsset(symbol){const s=String(symbol||'').toUpperCase();if(s.endsWith('-USD'))return s.slice(0,-4);if(s.endsWith('USDT'))return s.slice(0,-4);if(s.endsWith('USD'))return s.slice(0,-3);return s}
+function populateAssets(assets=[]){const sel=$('symbol'),current=sel.value||'BTC';const vals=[...new Set((assets||[]).map(baseAsset).filter(Boolean))].sort();if(!vals.includes(current))vals.unshift(current);sel.innerHTML=vals.map(a=>`<option value="${esc(a)}" ${a===current?'selected':''}>${esc(a)}</option>`).join('')}
+function mergeAssetsFromQuotes(qs){if(!Array.isArray(qs))return;const current=[...$('symbol').options].map(o=>o.value);populateAssets([...current,...qs.map(q=>q.symbol)])}
+function spark(rows,key){const s=$('spark'),meta=$('sparkMeta');const valid=Array.isArray(rows)?rows.filter(x=>Number.isFinite(Number(x.price))&&Number.isFinite(Number(x.time_ms||x.ingest_time_ms||x.event_time_ms))).sort((a,b)=>Number(a.time_ms||a.ingest_time_ms||a.event_time_ms)-Number(b.time_ms||b.ingest_time_ms||b.event_time_ms)):[];if(valid.length>=2)historyCache.set(key,valid);const cached=historyCache.get(key)||[];if(cached.length<2){s.innerHTML='<text x="500" y="112" text-anchor="middle" fill="#8fa3b8">Sem histórico suficiente</text>';meta.innerHTML='<span>Sem dados suficientes para desenhar o gráfico.</span>';return}const data=cached.slice();const pts=data.map(x=>Number(x.price)),times=data.map(x=>Number(x.time_ms||x.ingest_time_ms||x.event_time_ms));const min=Math.min(...pts),max=Math.max(...pts),span=max-min||1,t0=Math.min(...times),t1=Math.max(...times),tspan=t1-t0||1,pad=18,w=1000,h=220,plotH=h-pad*2;const coords=pts.map((v,i)=>[(times[i]-t0)/tspan*w,pad+(max-v)/span*plotH]);const line=coords.map(p=>p.join(',')).join(' ');const area=`0,${h-pad} ${line} ${w},${h-pad}`;let grid='';for(let i=1;i<4;i++){const y=pad+i*plotH/4;grid+=`<line x1="0" y1="${y}" x2="1000" y2="${y}" stroke="#26384b" stroke-width="1" vector-effect="non-scaling-stroke"/>`}s.innerHTML=`${grid}<polygon points="${area}" fill="#60a5fa18"/><polyline points="${line}" fill="none" stroke="#60a5fa" stroke-width="2" vector-effect="non-scaling-stroke"/><text x="8" y="16" fill="#8fa3b8">${fmt(max,8)}</text><text x="8" y="214" fill="#8fa3b8">${fmt(min,8)}</text>`;const br=t=>new Date(t).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}),cur=pts[pts.length-1],days=$('historyDays').value;meta.innerHTML=`<span>${pts.length} candles · ${days} dia(s) · min ${fmt(min,8)} · máx ${fmt(max,8)} · atual ${fmt(cur,8)}</span><span>${esc(br(t0))} → ${esc(br(t1))}</span>`}
+async function loadMarket(){const seq=++marketSeq,sym=$('symbol').value.trim().toUpperCase(),venue=$('venue').value,days=$('historyDays').value,key=`${venue}:${sym}:${days}`;const [q,h,qs]=await Promise.all([api(`/api/quote/${sym}?venue=${venue}`),api(`/api/history/${sym}?venue=${venue}&days=${days}`),api('/api/quotes')]);if(seq!==marketSeq)return;if(!q.error)$('quoteCards').innerHTML=cards([['Ativo',q.symbol||sym],['Preço',q.price?('$ '+fmt(q.price,8)):'—'],['Bid',fmt(q.bid,8)],['Ask',fmt(q.ask,8)],['Idade',q.age_seconds!==undefined?fmt(q.age_seconds,2)+' s':'—',q.stale?'bad':'good'],['Horário',q.ingest_time||q.event_time||'—']]);else $('quoteCards').innerHTML=cards([['Ativo',sym],['Status','Erro temporário','bad'],['Detalhe',q.error||'indisponível']]);if(Array.isArray(h)&&h.length>=2)spark(h,key);else if(h?.error){spark([],key);$('sparkMeta').innerHTML=`<span class="warn">Histórico temporariamente indisponível: ${esc(h.error)}. Mantendo último gráfico válido deste ativo.</span>`}if(Array.isArray(qs)&&qs.length){lastQuotes=qs;mergeAssetsFromQuotes(qs);$('quotes').innerHTML=table(qs)}else if(lastQuotes.length){$('quotes').innerHTML=table(lastQuotes)+`<div class="warn small">Atualização de cotações falhou; exibindo último conjunto válido.</div>`}else $('quotes').innerHTML='<div class="warn">Cotações temporariamente indisponíveis.</div>'}
+async function loadAnalytics(){const seq=++analyticsSeq,sym=$('symbol').value.trim().toUpperCase(),venue=$('venue').value,intv=$('interval').value;const a=await api(`/api/analyze/${sym}?venue=${venue}&interval=${intv}&bars=300`);if(seq!==analyticsSeq)return;if(a.error){$('analyticsRaw').textContent=a.error;return}const t=a.technical||{},v=a.volatility||{},m=a.microstructure||{},obs=a.regime?.observed||{};const regime=obs.regime==='insufficient_data'?`insufficient_data (${obs.available_candles??a.bars??0}/${obs.required_candles??60})`:(obs.regime||'—');$('analyticsCards').innerHTML=cards([['Bars',a.bars??'—'],['RSI 14',fmt(t.rsi14,3)],['ATR %',fmt(t.atr14_pct,4)],['Vol realizada %',fmt(v.realized_pct_annualized,3)],['Spread bps',fmt(m.spread_bps,5)],['OFI',fmt(m.ofi,6)],['TFI 60s',fmt(m.tfi_60s,6)],['Regime',regime,obs.regime==='insufficient_data'?'warn':'good']]);$('analyticsRaw').textContent=JSON.stringify({technical:t,volatility:v,regime:a.regime},null,2);$('microRaw').textContent=JSON.stringify(m,null,2)}
+async function loadCorrelation(){const venue=$('venue').value,intv=$('interval').value;const bench=venue==='coinbase'?'BTC-USD':'BTCUSDT';$('correlation').textContent=JSON.stringify(await api(`/api/correlation?benchmark=${encodeURIComponent(bench)}&symbols=${encodeURIComponent($('corrSymbols').value)}&venue=${venue}&interval=${intv}&bars=300`),null,2)}
+async function loadSystem(){const [s,d]=await Promise.all([api('/api/system'),api('/api/data-distribution')]);const sv=s.services||{};$('serviceCards').innerHTML=cards(Object.entries(sv).map(([k,v])=>[k,v.ok?'OK':'ERRO',v.ok?'good':'bad']));const jobs=s.flink?.data?.jobs||[];$('flink').innerHTML=table(jobs.map(j=>({jid:j.jid,name:j.name,state:j.state,duration_ms:j.duration,running_tasks:j.tasks?.running,total_tasks:j.tasks?.total})));$('kafka').innerHTML=table(s.kafka?.topics||[]);$('inventory').innerHTML=table(s.inventory);$('storage').innerHTML=table(s.storage);$('distribution').innerHTML=table(d.events);$('candles').innerHTML=table(d.candles);$('microStore').innerHTML=table(d.microstructure)}
+async function loadAlerts(){const [a,r]=await Promise.all([api('/api/alerts?limit=100'),api('/api/reconciliation?limit=100')]);$('alertsTable').innerHTML=table(a);$('recon').innerHTML=table(r)}
+function alertRow(r={}){const div=document.createElement('div');div.className='config-row';div.innerHTML=`<input data-k="id" placeholder="id" value="${esc(r.id||'')}"><label class="small"><input data-k="enabled" type="checkbox" ${r.enabled!==false?'checked':''}> on</label><select data-k="source"><option ${r.source==='market'?'selected':''}>market</option><option ${r.source==='microstructure'?'selected':''}>microstructure</option></select><input data-k="venue" placeholder="venue" value="${esc(r.venue||'binance')}"><input data-k="symbol" placeholder="symbol" value="${esc(r.symbol||'')}"><input data-k="field" placeholder="field" value="${esc(r.field||'')}"><select data-k="operator">${['gt','gte','lt','lte','abs_gt','abs_gte'].map(x=>`<option ${r.operator===x?'selected':''}>${x}</option>`).join('')}</select><input data-k="value" type="number" step="any" placeholder="valor" value="${r.value??''}"><input data-k="cooldown_seconds" type="number" min="0" placeholder="cooldown" value="${r.cooldown_seconds??60}"><button class="danger" onclick="this.parentElement.remove();configDirty=true">X</button><input data-k="event_type" placeholder="event_type (opcional)" value="${esc(r.event_type||'')}" style="grid-column:1/3"><select data-k="severity" style="grid-column:3/5"><option ${r.severity==='info'?'selected':''}>info</option><option ${(!r.severity||r.severity==='warning')?'selected':''}>warning</option><option ${r.severity==='critical'?'selected':''}>critical</option></select>`;div.querySelectorAll('input,select').forEach(x=>x.onchange=()=>configDirty=true);return div}
+function addAlertRule(r={}){$('alertRules').appendChild(alertRow(r));configDirty=true}
+function priceRow(asset='',r={}){const div=document.createElement('div');div.className='price-row';div.innerHTML=`<input data-k="asset" placeholder="BTC" value="${esc(asset)}"><label class="small"><input data-k="enabled" type="checkbox" ${r.enabled!==false?'checked':''}> on</label><input data-k="venue" placeholder="venue" value="${esc(r.venue||'binance')}"><input data-k="symbol" placeholder="BTCUSDT" value="${esc(r.symbol||'')}"><input data-k="percent_up" type="number" step="any" placeholder="+%" value="${r.percent_up??''}"><input data-k="percent_down" type="number" step="any" placeholder="-%" value="${r.percent_down??''}"><input data-k="high" type="number" step="any" placeholder="teto" value="${r.high??''}"><input data-k="low" type="number" step="any" placeholder="piso" value="${r.low??''}"><input data-k="cooldown_seconds" type="number" min="0" placeholder="cooldown" value="${r.cooldown_seconds??60}"><button class="danger" onclick="this.parentElement.remove();configDirty=true">X</button>`;div.querySelectorAll('input').forEach(x=>x.onchange=()=>configDirty=true);return div}
+function addPriceRule(asset='',r={}){$('priceRules').appendChild(priceRow(asset,r));configDirty=true}
+async function loadConfig(force=false){if(configDirty&&!force)return;const c=await api('/api/config');if(c.error){$('configStatus').textContent='Erro: '+c.error;$('configStatus').className='statusline bad';return}const m=c.markets||{},src=m.sources||{},b=src.binance||{},cb=src.coinbase||{};populateAssets(m.watchlist||[]);$('cfgWatchlist').value=csv(m.watchlist);$('cfgReload').value=m.reload_seconds??5;$('cfgBinanceEnabled').checked=b.enabled!==false;$('cfgBinanceQuote').value=b.quote||'USDT';$('cfgBinanceProducts').value=csv(b.products);$('cfgBinanceChannels').value=csv(b.channels);$('cfgBinanceDepth').value=b.depth_interval||'100ms';$('cfgBinanceSnapshot').value=b.snapshot_limit??1000;$('cfgCoinbaseEnabled').checked=cb.enabled!==false;$('cfgCoinbaseQuote').value=cb.quote||'USD';$('cfgCoinbaseProducts').value=csv(cb.products);$('cfgCoinbaseChannels').value=csv(cb.channels);$('alertRules').innerHTML='';(c.alerts?.rules||[]).forEach(r=>$('alertRules').appendChild(alertRow(r)));const tg=c.telegram||{},td=tg.defaults||{},fw=tg.forward_alerts||{};$('tgVenue').value=td.venue||'binance';$('tgQuote').value=td.quote||'USDT';$('tgCooldown').value=td.cooldown_seconds??60;$('tgForwardEnabled').checked=fw.enabled!==false;$('tgSeverities').value=csv(fw.severities||['critical']);$('priceRules').innerHTML='';Object.entries(tg.price_alerts||{}).forEach(([a,r])=>$('priceRules').appendChild(priceRow(a,r)));const tr=c.telegram_runtime||{};$('telegramRuntime').innerHTML=`Runtime: <b class="${tr.enabled?'good':'warn'}">${tr.enabled?'habilitado':'desabilitado'}</b> · token: ${tr.configured?'configurado':'ausente'} · chats autorizados: ${tr.allowed_chat_count??0}`;$('webUiRuntime').innerHTML=table([{write_enabled:c.write_enabled,write_ready:c.write_ready,admin_token_required:c.admin_token_required,refresh_seconds:c.web_ui?.refresh_seconds,cache_seconds:c.web_ui?.system_cache_seconds}]);$('adminTokenBox').style.display=c.admin_token_required?'block':'none';if(c.admin_token_required&&!$('adminToken').value)$('adminToken').value=sessionStorage.getItem('cryptoAdminToken')||'';$('configStatus').textContent=c.write_ready?'Configuração gravável pela Web UI':(c.external_bind_requires_token&&!c.admin_token_required?'Defina WEB_UI_ADMIN_TOKEN no .env e reinicie web-ui':'Configuração somente leitura');$('configStatus').className='statusline '+(c.write_ready?'good':'warn');configDirty=false}
+async function saveMarkets(){const payload={version:1,reload_seconds:Number($('cfgReload').value||5),watchlist:splitCsv($('cfgWatchlist').value).map(x=>x.toUpperCase()),sources:{binance:{enabled:$('cfgBinanceEnabled').checked,quote:$('cfgBinanceQuote').value,products:splitCsv($('cfgBinanceProducts').value),channels:splitCsv($('cfgBinanceChannels').value),depth_interval:$('cfgBinanceDepth').value,snapshot_limit:Number($('cfgBinanceSnapshot').value||1000)},coinbase:{enabled:$('cfgCoinbaseEnabled').checked,quote:$('cfgCoinbaseQuote').value,products:splitCsv($('cfgCoinbaseProducts').value),channels:splitCsv($('cfgCoinbaseChannels').value)}}};const r=await api('/api/config/markets',writeOpts(payload));notifySave(r,'Mercados')}
+async function saveAlerts(){const rules=[...$('alertRules').children].map(row=>{const g=k=>row.querySelector(`[data-k="${k}"]`);return{id:g('id').value,enabled:g('enabled').checked,source:g('source').value,venue:g('venue').value,symbol:g('symbol').value,event_type:g('event_type').value,field:g('field').value,operator:g('operator').value,value:numOrNull(g('value').value),cooldown_seconds:Number(g('cooldown_seconds').value||0),severity:g('severity').value}});const r=await api('/api/config/alerts',writeOpts({rules}));notifySave(r,'Alertas')}
+async function saveTelegram(){const price_alerts={};[...$('priceRules').children].forEach(row=>{const g=k=>row.querySelector(`[data-k="${k}"]`);const a=g('asset').value.trim().toUpperCase();if(!a)return;const r={enabled:g('enabled').checked,venue:g('venue').value,symbol:g('symbol').value,cooldown_seconds:Number(g('cooldown_seconds').value||0)};for(const k of ['percent_up','percent_down','high','low']){const v=numOrNull(g(k).value);if(v!==null)r[k]=v}price_alerts[a]=r});const payload={version:1,defaults:{venue:$('tgVenue').value,quote:$('tgQuote').value,cooldown_seconds:Number($('tgCooldown').value||0)},forward_alerts:{enabled:$('tgForwardEnabled').checked,severities:splitCsv($('tgSeverities').value)},price_alerts};const r=await api('/api/config/telegram',writeOpts(payload));notifySave(r,'Telegram')}
+function notifySave(r,label){if(r.error){$('configStatus').textContent=`${label}: ERRO - ${r.error}`;$('configStatus').className='statusline bad'}else{$('configStatus').textContent=`${label}: salvo com sucesso`;$('configStatus').className='statusline good';configDirty=false;setTimeout(()=>loadConfig(true),300)}}
+async function refreshFast(){if(fastBusy){fastPending=true;return}fastBusy=true;try{do{fastPending=false;await Promise.all([loadMarket(),loadAnalytics()])}while(fastPending);$('updated').textContent='Mercado: '+new Date().toLocaleTimeString('pt-BR')}finally{fastBusy=false}}
+async function refreshSystem(){if(systemBusy)return;systemBusy=true;try{await loadSystem()}finally{systemBusy=false}}
+async function refreshAlerts(){if(alertsBusy)return;alertsBusy=true;try{await loadAlerts()}finally{alertsBusy=false}}
+async function refreshAll(){await Promise.all([refreshFast(),refreshSystem(),refreshAlerts()]);$('updated').textContent='Atualizado: '+new Date().toLocaleTimeString('pt-BR')}
+document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');$(b.dataset.tab).classList.add('active')});
+['cfgWatchlist','cfgReload','cfgBinanceQuote','cfgBinanceProducts','cfgBinanceChannels','cfgBinanceDepth','cfgBinanceSnapshot','cfgCoinbaseQuote','cfgCoinbaseProducts','cfgCoinbaseChannels','tgVenue','tgQuote','tgCooldown','tgSeverities'].forEach(id=>$(id).addEventListener('input',()=>configDirty=true));['cfgBinanceEnabled','cfgCoinbaseEnabled','tgForwardEnabled'].forEach(id=>$(id).addEventListener('change',()=>configDirty=true));
+$('symbol').addEventListener('change',refreshFast);$('venue').addEventListener('change',refreshFast);$('interval').addEventListener('change',refreshFast);$('historyDays').addEventListener('change',refreshFast);loadConfig(true);refreshAll();setInterval(refreshFast,__REFRESH_MS__);setInterval(refreshAlerts,15000);setInterval(refreshSystem,30000);
+</script>
+</body></html>
