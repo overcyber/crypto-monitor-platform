@@ -27,17 +27,17 @@ def _stage_raw(start_ms: int, end_ms: int) -> tuple[dict[tuple[str,str,str], dic
     try:
         db.execute("PRAGMA journal_mode=WAL")
         db.execute("PRAGMA synchronous=NORMAL")
-        db.execute("CREATE TABLE raw(event_id TEXT, venue TEXT, symbol TEXT, event_type TEXT, price REAL, quantity REAL, event_time_ms INTEGER)")
+        db.execute("CREATE TABLE raw(event_id TEXT, venue TEXT, symbol TEXT, event_type TEXT, price REAL, quantity REAL, ingest_time_ms INTEGER)")
         db.execute("CREATE INDEX idx_raw_key ON raw(venue,symbol,event_type)")
         db.execute("CREATE INDEX idx_raw_event ON raw(event_id)")
         table=raw_table()
-        filt=And(GreaterThanOrEqual("event_time_ms", start_ms), LessThan("event_time_ms", end_ms))
-        scan=table.scan(row_filter=filt, selected_fields=("event_id","venue","symbol","event_type","price","quantity","event_time_ms"))
+        filt=And(GreaterThanOrEqual("ingest_time_ms", start_ms), LessThan("ingest_time_ms", end_ms))
+        scan=table.scan(row_filter=filt, selected_fields=("event_id","venue","symbol","event_type","price","quantity","event_time_ms","ingest_time_ms"))
         total=0
         for batch in scan.to_arrow_batch_reader(dictionary_columns=("venue","symbol","event_type")):
             vals=[]
             for r in batch.to_pylist():
-                vals.append((r.get("event_id"),r.get("venue"),r.get("symbol"),r.get("event_type"),r.get("price"),r.get("quantity"),r.get("event_time_ms")))
+                vals.append((r.get("event_id"),r.get("venue"),r.get("symbol"),r.get("event_type"),r.get("price"),r.get("quantity"),r.get("ingest_time_ms")))
             db.executemany("INSERT INTO raw VALUES(?,?,?,?,?,?,?)",vals); total+=len(vals); db.commit()
         raw_rows={tuple(r[:3]):int(r[3]) for r in db.execute("SELECT venue,symbol,event_type,count(*) FROM raw GROUP BY venue,symbol,event_type")}
         agg={}
@@ -65,7 +65,7 @@ def _hot(start_ms:int,end_ms:int)->dict[tuple[str,str,str],dict[str,float]]:
            sum(ifNull(quantity,0.0)) quantity,
            sum(ifNull(price,0.0)*ifNull(quantity,0.0)) notional
     FROM market.events_hot FINAL
-    WHERE event_time_ms >= {start:Int64} AND event_time_ms < {end:Int64}
+    WHERE ingest_time_ms >= {start:Int64} AND ingest_time_ms < {end:Int64}
     GROUP BY venue,symbol,event_type
     """
     out={}
@@ -89,8 +89,11 @@ def reconcile_once(start_ms:int,end_ms:int)->dict[str,Any]:
     ws=datetime.fromtimestamp(start_ms/1000,timezone.utc);we=datetime.fromtimestamp(end_ms/1000,timezone.utc)
     for x in result:
         v,sym,typ=x["key"];rr=x["raw"];hh=x["hot"]
-        data.append([run_id,ws,we,v,sym,typ,rr["rows"],rr["unique"],rr["quantity"],rr["notional"],hh["rows"],hh["unique"],hh["quantity"],hh["notional"],x["status"],json.dumps({"count_delta":x["count_delta"],"quantity_delta_pct":x["quantity_delta_pct"],"notional_delta_pct":x["notional_delta_pct"]}),now])
-    if data: ch_insert("market.reconciliation_results", data, column_names=columns)
+        data.append([run_id,ws,we,v,sym,typ,rr["rows"],rr["unique"],rr["quantity"],rr["notional"],hh["rows"],hh["unique"],hh["quantity"],hh["notional"],x["status"],json.dumps({"count_delta":x["count_delta"],"quantity_delta_pct":x["quantity_delta_pct"],"notional_delta_pct":x["notional_delta_pct"],"time_basis":"ingest_time_ms"}),now])
+    # Always persist a run heartbeat so the UI can distinguish an empty window from a dead reconciler.
+    summary_status = "ok" if result else "empty"
+    data.append([run_id,ws,we,"system","*","reconcile_run",total,total,0.0,0.0,0,0,0.0,0.0,summary_status,json.dumps({"groups":len(result),"mismatches":sum(x["status"]!="ok" for x in result),"time_basis":"ingest_time_ms"}),now])
+    ch_insert("market.reconciliation_results", data, column_names=columns)
     return {"run_id":run_id,"start_ms":start_ms,"end_ms":end_ms,"raw_scanned_rows":total,"groups":len(result),"mismatches":sum(x["status"]!="ok" for x in result),"results":result}
 
 

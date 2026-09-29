@@ -1,15 +1,14 @@
-# Aplicação v4.3.6
-
-Na raiz do projeto:
+# Apply v4.3.7
 
 ```bash
-unzip -o crypto-monitor-v4.3.6-history-timeout-fix.zip -d .
-docker compose restart monitor-api web-ui
+unzip -o crypto-monitor-v4.3.7-alerts-reconcile-fix.zip -d .
+./scripts/apply-v4.3.7.sh
+docker compose restart telegram-bot reconciler
 ```
 
-Teste:
+Test:
 
 ```bash
-curl -s 'http://localhost:8090/api/history/BTC?venue=binance&days=7' | jq '.[0:3]'
-curl -s http://localhost:8081/v1/quotes | jq
+docker compose logs --tail=100 telegram-bot reconciler
+curl -s http://localhost:8081/v1/reconciliation/latest?limit=20 | jq
 ```
