@@ -69,6 +69,26 @@ def _quote(symbol: str, venue: str) -> dict | None:
         """,
         {"venue": venue.lower(), "symbol": native},
     )
+    if not out:
+        out = rows(
+            """
+            SELECT
+              venue,
+              symbol,
+              argMaxIf(price, tuple(ingest_time_ms, event_time_ms), price IS NOT NULL) AS price,
+              argMaxIf(bid_price, tuple(ingest_time_ms, event_time_ms), bid_price IS NOT NULL) AS bid,
+              argMaxIf(ask_price, tuple(ingest_time_ms, event_time_ms), ask_price IS NOT NULL) AS ask,
+              argMaxIf(quantity, tuple(ingest_time_ms, event_time_ms), quantity IS NOT NULL) AS quantity,
+              argMax(event_time_ms, tuple(ingest_time_ms, event_time_ms)) AS latest_event_time_ms,
+              max(ingest_time_ms) AS latest_ingest_time_ms
+            FROM market.events_hot
+            WHERE venue={venue:String} AND symbol={symbol:String}
+              AND event_type IN ('trade','ticker','book_ticker')
+            GROUP BY venue, symbol
+            LIMIT 1
+            """,
+            {"venue": venue.lower(), "symbol": native},
+        )
     return _decorate_quote(out[0]) if out else None
 
 
@@ -111,6 +131,21 @@ async def quotes(venue: str | None = None, limit: int = Query(100, ge=1, le=1000
     """
     try:
         result = await asyncio.to_thread(rows, q, params)
+        if not result:
+            where_fallback = "WHERE event_type IN ('trade','ticker','book_ticker')"
+            if venue:
+                where_fallback += " AND venue={venue:String}"
+            q_fallback = f"""
+              SELECT venue,symbol,
+                argMaxIf(price,tuple(ingest_time_ms,event_time_ms),price IS NOT NULL) AS price,
+                argMaxIf(bid_price,tuple(ingest_time_ms,event_time_ms),bid_price IS NOT NULL) AS bid,
+                argMaxIf(ask_price,tuple(ingest_time_ms,event_time_ms),ask_price IS NOT NULL) AS ask,
+                argMax(event_time_ms,tuple(ingest_time_ms,event_time_ms)) AS latest_event_time_ms,
+                max(ingest_time_ms) AS latest_ingest_time_ms
+              FROM market.events_hot {where_fallback}
+              GROUP BY venue,symbol ORDER BY venue,symbol LIMIT {{limit:UInt32}}
+            """
+            result = await asyncio.to_thread(rows, q_fallback, params)
         return [_decorate_quote(x) for x in result]
     except Exception as exc:
         raise HTTPException(503, str(exc)) from exc

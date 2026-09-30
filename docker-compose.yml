@@ -288,6 +288,7 @@ services:
       dockerfile: docker/flink-runtime.Dockerfile
     env_file: .env
     volumes:
+      - ./infra/flink/conf/flink-conf.yaml:/opt/flink/conf/flink-conf.yaml:ro
       - ./infra/flink/jobs:/opt/app/flink/jobs:ro
       - ./scripts:/opt/app/scripts:ro
     entrypoint: ["/bin/bash", "/opt/app/scripts/flink-job-supervisor.sh"]
@@ -452,6 +453,8 @@ services:
       - ./config:/opt/app/config:ro
       - ./docker-compose.yml:/opt/app/docker-compose.yml:ro
       - ./.dockerignore:/opt/app/.dockerignore:ro
+      - ./.env.example:/opt/app/.env.example:ro
+      - ./Makefile:/opt/app/Makefile:ro
       - ./infra:/opt/app/infra:ro
       - ./docker:/opt/app/docker:ro
     command: ["python", "-m", "unittest", "discover", "-s", "tests", "-v"]
