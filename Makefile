@@ -1,4 +1,4 @@
-.PHONY: init-data bootstrap preflight pull build up down reload reload-flink status storage test docker-test validate smoke backup-catalog logs telegram-logs telegram-test telegram-discover telegram-restart web-logs clean-pyc
+.PHONY: init-data bootstrap preflight pull build up up-monitor down reload reload-flink status storage test docker-test validate smoke backup-catalog logs telegram-logs telegram-test telegram-discover telegram-restart web-logs clean-pyc
 
 init-data:
 	mkdir -p data/kafka data/clickhouse data/clickhouse-logs data/garage/meta data/garage/data data/garage/config data/lakekeeper-postgres data/flink/checkpoints data/flink/savepoints data/grafana data/reconcile data/replay data/telegram
@@ -18,6 +18,9 @@ build:
 
 up:
 	./scripts/up.sh
+
+up-monitor:
+	./scripts/up-monitor.sh
 
 down:
 	./scripts/down.sh

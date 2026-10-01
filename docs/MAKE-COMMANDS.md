@@ -39,6 +39,7 @@ O passo 3 baixa somente imagens de registry. O passo 4 não tenta puxar novament
 | `make pull` | baixa imagens externas de forma serial |
 | `make build` | constrói as imagens locais do projeto com Compose serializado |
 | `make up` | bootstrap + preflight + pull serial + `up --pull never` |
+| `make up-monitor` | inicia apenas o pipeline leve: monitor de preços + alertas do Telegram |
 | `make down` | para/remover containers e rede; não apaga os diretórios `data/` |
 | `make reload` | reinicia apenas microserviços Python que usam código bind-mounted |
 | `make reload-flink` | reinicia/submete novamente o job Flink usando o SQL montado do host |

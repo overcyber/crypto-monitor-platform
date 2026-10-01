@@ -30,7 +30,23 @@ O projeto usa um wrapper de Docker Compose com **paralelismo 1 por padrão**. Is
 > **Estrutura de dados (`data/`):** O conteúdo da pasta `data/` é ignorado no Git por segurança e tamanho. O comando `make init-data` (ou `make bootstrap`) cria automaticamente todas as pastas necessárias com permissões adequadas.
 > **Lakekeeper:** os releases de container usam prefixo `v`. A versão padrão é `LAKEKEEPER_VERSION=v0.13.6`. Se estiver atualizando uma instalação anterior, ajuste também o seu `.env`; copiar um novo `.env.example` não altera o `.env` existente.
 
-Documentação completa: [`docs/SYSTEM_GUIDE.md`](docs/SYSTEM_GUIDE.md) · [`docs/MAKE-COMMANDS.md`](docs/MAKE-COMMANDS.md) · [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) · [`CHANGELOG.md`](CHANGELOG.md).
+Documentação completa: [`docs/SYSTEM_GUIDE.md`](docs/SYSTEM_GUIDE.md) · [`docs/MAKE-COMMANDS.md`](docs/MAKE-COMMANDS.md) · [`docs/MONITOR-TELEGRAM-ONLY.md`](docs/MONITOR-TELEGRAM-ONLY.md) · [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) · [`CHANGELOG.md`](CHANGELOG.md).
+
+
+## Execução Leve (Monitor de Valor + Alertas Telegram)
+
+Se você precisa apenas acompanhar cotações em tempo real e receber alertas via Telegram (desabilitando workers analíticos, cálculos pesados de microestrutura e replay histórico para economizar até 70% de RAM e CPU):
+
+```bash
+make up-monitor
+```
+
+Para subir também a interface Web UI junto ao monitor e bot:
+```bash
+./scripts/up-monitor.sh --with-ui
+```
+
+Guia detalhado: [`docs/MONITOR-TELEGRAM-ONLY.md`](docs/MONITOR-TELEGRAM-ONLY.md).
 
 
 ## Uso diário
