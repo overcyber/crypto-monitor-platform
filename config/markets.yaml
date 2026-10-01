@@ -24,3 +24,11 @@ sources:
     - level2
     - matches
     - ticker
+  kraken:
+    enabled: true
+    quote: USD
+    products: []
+    channels:
+    - ticker
+    - trade
+    - book

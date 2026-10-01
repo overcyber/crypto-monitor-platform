@@ -397,7 +397,7 @@ async def history(
     days: int = Query(1, ge=1, le=90),
 ) -> Any:
     venue = venue.strip().lower()
-    if venue not in {"binance", "coinbase"}:
+    if venue not in {"binance", "coinbase", "kraken"}:
         raise HTTPException(status_code=422, detail="unsupported venue")
     try:
         market_cfg = load_market_config(MARKETS_PATH)

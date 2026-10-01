@@ -89,7 +89,47 @@ def _quote(symbol: str, venue: str) -> dict | None:
             """,
             {"venue": venue.lower(), "symbol": native},
         )
-    return _decorate_quote(out[0]) if out else None
+    res = _decorate_quote(out[0]) if out else None
+    if res is not None and not res.get("stale"):
+        return res
+
+    # If requested venue has no data or is stale, check other configured sources (e.g. kraken)
+    try:
+        cfg = load_market_config()
+        for other_venue in cfg.sources:
+            if other_venue.lower() == venue.lower() or not cfg.sources[other_venue].enabled:
+                continue
+            other_native = cfg.resolve_product(other_venue, symbol)
+            other_out = rows(
+                """
+                SELECT
+                  venue,
+                  symbol,
+                  argMaxIf(price, tuple(ingest_time_ms, event_time_ms), price IS NOT NULL) AS price,
+                  argMaxIf(bid_price, tuple(ingest_time_ms, event_time_ms), bid_price IS NOT NULL) AS bid,
+                  argMaxIf(ask_price, tuple(ingest_time_ms, event_time_ms), ask_price IS NOT NULL) AS ask,
+                  argMaxIf(quantity, tuple(ingest_time_ms, event_time_ms), quantity IS NOT NULL) AS quantity,
+                  argMax(event_time_ms, tuple(ingest_time_ms, event_time_ms)) AS latest_event_time_ms,
+                  max(ingest_time_ms) AS latest_ingest_time_ms
+                FROM market.events_hot
+                WHERE venue={venue:String} AND symbol={symbol:String}
+                  AND ingest_time_ms >= toUnixTimestamp64Milli(now64(3, 'UTC') - INTERVAL 6 HOUR)
+                  AND event_type IN ('trade','ticker','book_ticker')
+                GROUP BY venue, symbol
+                LIMIT 1
+                """,
+                {"venue": other_venue.lower(), "symbol": other_native},
+            )
+            if other_out:
+                dec = _decorate_quote(other_out[0])
+                if dec and not dec.get("stale"):
+                    return dec
+                if res is None:
+                    res = dec
+    except Exception:
+        pass
+
+    return res
 
 
 @app.get("/health")

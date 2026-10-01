@@ -26,12 +26,19 @@ sources:
     quote: USD
     products: []
     channels: [level2, matches, ticker]
+
+  kraken:
+    enabled: true
+    quote: USD
+    products: []
+    channels: [ticker, trade, book]
 ```
 
 Com `products: []`, os pares são derivados automaticamente:
 
 - Binance: `BTC` + `USDT` → `BTCUSDT`;
-- Coinbase: `BTC` + `USD` → `BTC-USD`.
+- Coinbase: `BTC` + `USD` → `BTC-USD`;
+- Kraken: `XMR` + `USD` → `XMR/USD` (suporta Monero nativamente via WebSocket v2).
 
 ## Escolher pares explicitamente
 

@@ -42,9 +42,11 @@ class MarketConfig:
         if source.products:
             return list(source.products)
         if name.lower() == "binance":
-            return [f"{asset}{source.quote}".upper().replace("-", "") for asset in self.watchlist]
+            return [f"{asset}{source.quote}".upper().replace("-", "").replace("/", "") for asset in self.watchlist]
         if name.lower() == "coinbase":
             return [f"{asset}-{source.quote}".upper() for asset in self.watchlist]
+        if name.lower() == "kraken":
+            return [f"{asset}/{source.quote}".upper() for asset in self.watchlist]
         return list(self.watchlist)
 
     def resolve_product(self, name: str, symbol: str) -> str:
@@ -56,14 +58,21 @@ class MarketConfig:
             return raw
         source = self.source(venue)
         if venue == "binance":
-            candidate = f"{raw}{source.quote}".replace("-", "")
+            candidate = f"{raw}{source.quote}".replace("-", "").replace("/", "")
         elif venue == "coinbase":
             candidate = f"{raw}-{source.quote}"
+        elif venue == "kraken":
+            candidate = f"{raw}/{source.quote}" if "/" not in raw else raw
+            if candidate not in products:
+                clean_raw = raw.replace("-", "").replace("/", "")
+                for p in products:
+                    if p.replace("/", "").replace("-", "") == clean_raw:
+                        return p
         else:
             candidate = raw
         if candidate in products:
             return candidate
-        return raw
+        return candidate if candidate else raw
 
     def fingerprint(self, name: str) -> str:
         src = self.source(name)
@@ -102,6 +111,7 @@ def load_market_config(path: str | Path | None = None) -> MarketConfig:
             sources={
                 "binance": SourceConfig("binance", True, "USDT", binance, ("DEPTH", "TRADE", "BOOK_TICKER")),
                 "coinbase": SourceConfig("coinbase", True, "USD", coinbase, ("LEVEL2", "MATCHES", "TICKER")),
+                "kraken": SourceConfig("kraken", False, "USD", (), ("TICKER", "TRADE", "BOOK")),
             },
         )
 
@@ -118,12 +128,14 @@ def load_market_config(path: str | Path | None = None) -> MarketConfig:
     defaults = {
         "binance": {"quote": "USDT", "channels": ["depth", "trade", "book_ticker"]},
         "coinbase": {"quote": "USD", "channels": ["level2", "matches", "ticker"]},
+        "kraken": {"quote": "USD", "channels": ["ticker", "trade", "book"]},
     }
     sources: dict[str, SourceConfig] = {}
-    for name in ("binance", "coinbase"):
+    for name in ("binance", "coinbase", "kraken"):
         cfg = dict(defaults[name])
+        has_custom = name in source_raw
         cfg.update(source_raw.get(name, {}) or {})
-        enabled = bool(cfg.get("enabled", True))
+        enabled = bool(cfg.get("enabled", has_custom if name == "kraken" else True))
         quote = str(cfg.get("quote", defaults[name]["quote"])).strip().upper()
         products = _clean_list(cfg.get("products", []))
         channels = _clean_list(cfg.get("channels", defaults[name]["channels"]))

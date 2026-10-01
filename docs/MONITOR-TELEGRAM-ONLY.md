@@ -206,8 +206,25 @@ Se você adicionar `XMR` à sua `watchlist` em `config/markets.yaml`, notará qu
   - A última transação registrada na Binance para `XMRUSDT` ocorreu em `1708397999933` (20/02/2024 às 02:59:59 UTC).
   - O WebSocket da Binance (`xmrusdt@trade` / `xmrusdt@bookTicker`) permanece mudo, sem enviar nenhum evento.
 
-### 6.3 Conclusão e Recomendação para o XMR
-Como a plataforma consome exclusivamente da **Binance** e **Coinbase**, nenhum dos dois provedores integrados comercializa Monero atualmente.
+### 6.3 Solução Implementada: Conector Kraken (`src/ingestors/kraken.py`)
+Para solucionar a ausência de Monero (XMR), foi implementado o conector nativo para a **Kraken**:
+- **Protocolo:** WebSocket v2 da Kraken (`wss://ws.kraken.com/v2`).
+- **Canais Suportados:** `ticker` (cotações e book ticker), `trade` (negócios executados) e `book` (livro de ofertas).
+- **Par Ativo:** `XMR/USD` (negociado e cotado em tempo real).
 
-- **Recomendação imediata:** Remova `- XMR` de `config/markets.yaml` (mantendo ex: `BTC`, `ETH`, `SOL`), evitando erros de subscrição no conector da Coinbase.
-- **Para monitorar XMR futuramente:** É necessário criar um novo conector de ingestão (por exemplo, `src/ingestors/kraken.py` ou `src/ingestors/kucoin.py`), pois a Kraken e a KuCoin ainda mantêm pares de negociação ativos para o Monero.
+Com o conector `ingestor-kraken` ativo no `docker-compose.yml` e configurado em `config/markets.yaml`:
+```yaml
+sources:
+  kraken:
+    enabled: true
+    quote: USD
+    products: []
+    channels:
+      - ticker
+      - trade
+      - book
+```
+O XMR agora é capturado continuamente e pode ser consultado tanto na API REST quanto no Telegram:
+- **API REST:** `curl http://localhost:8081/v1/quote/XMR`
+- **Telegram Bot:** `/price XMR`
+- **Web UI:** Ativo `XMR` selecionável no cabeçalho com cotações e livro em tempo real.

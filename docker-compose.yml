@@ -316,6 +316,13 @@ services:
       kafka-init:
         condition: service_completed_successfully
 
+  ingestor-kraken:
+    <<: *python-core
+    command: ["python", "-m", "src.ingestors.kraken"]
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+
   book-worker:
     <<: *python-core
     command: ["python", "-m", "src.book_worker.service"]

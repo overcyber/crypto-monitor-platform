@@ -22,6 +22,7 @@ SERVICES=(
   flink-job-supervisor
   ingestor-binance
   ingestor-coinbase
+  ingestor-kraken
   monitor-api
   telegram-bot
 )

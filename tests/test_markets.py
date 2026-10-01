@@ -29,11 +29,18 @@ sources:
     quote: USD
     products: []
     channels: [level2, matches, ticker]
+  kraken:
+    enabled: true
+    quote: USD
+    products: []
+    channels: [ticker, trade, book]
 """)
         cfg = load_market_config(p)
         self.assertEqual(cfg.watchlist, ("BTC", "ETH", "SOL"))
         self.assertEqual(cfg.products_for("binance"), ["BTCUSDT", "ETHUSDT", "SOLUSDT"])
         self.assertEqual(cfg.products_for("coinbase"), ["BTC-USD", "ETH-USD", "SOL-USD"])
+        self.assertEqual(cfg.products_for("kraken"), ["BTC/USD", "ETH/USD", "SOL/USD"])
+        self.assertEqual(cfg.resolve_product("kraken", "XMR"), "XMR/USD")
         self.assertEqual(cfg.reload_seconds, 3.0)
 
     def test_explicit_products_override_watchlist(self):
