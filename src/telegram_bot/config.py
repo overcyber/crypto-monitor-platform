@@ -32,7 +32,11 @@ def pair_for(asset: str, venue: str, quote: str) -> str:
     asset = normalize_asset(asset)
     venue = venue.lower()
     quote = normalize_asset(quote)
-    return f"{asset}-{quote}" if venue == "coinbase" else f"{asset}{quote}"
+    if venue == "coinbase":
+        return f"{asset}-{quote}"
+    if venue == "kraken":
+        return f"{asset}/{quote}"
+    return f"{asset}{quote}"
 
 
 def list_watchlist(path: Path = MARKETS_PATH) -> list[str]:
@@ -54,7 +58,7 @@ def set_monitored(asset: str, enabled: bool, path: Path = MARKETS_PATH) -> list[
         products = cfg.get("products") or []
         if not products:
             continue
-        quote = str(cfg.get("quote") or ("USD" if venue == "coinbase" else "USDT"))
+        quote = str(cfg.get("quote") or ("USD" if venue in {"coinbase", "kraken"} else "USDT"))
         pair = pair_for(asset, venue, quote)
         normalized = [str(x).upper() for x in products]
         if enabled and pair not in normalized:
@@ -78,6 +82,7 @@ def save_telegram(data: dict[str, Any], path: Path = TELEGRAM_PATH) -> None:
 def configure_price_alert(
     asset: str,
     *,
+    venue: str | None = None,
     percent_up: float | None = None,
     percent_down: float | None = None,
     high: float | None = None,
@@ -87,13 +92,16 @@ def configure_price_alert(
     asset = normalize_asset(asset)
     data = _load(path)
     defaults = data.setdefault("defaults", {})
-    venue = str(defaults.get("venue", "binance")).lower()
-    quote = str(defaults.get("quote", "USDT")).upper()
+    if not venue:
+        venue = "kraken" if asset == "XMR" else str(defaults.get("venue", "binance")).lower()
+    else:
+        venue = venue.lower()
+    quote = "USD" if venue in {"coinbase", "kraken"} else str(defaults.get("quote", "USDT")).upper()
     rules = data.setdefault("price_alerts", {})
     rule = rules.setdefault(asset, {})
-    rule.setdefault("enabled", True)
-    rule.setdefault("venue", venue)
-    rule.setdefault("symbol", pair_for(asset, venue, quote))
+    rule["enabled"] = True
+    rule["venue"] = venue
+    rule["symbol"] = pair_for(asset, venue, quote)
     rule.setdefault("cooldown_seconds", int(defaults.get("cooldown_seconds", 60)))
     if percent_up is not None:
         rule["percent_up"] = float(percent_up)

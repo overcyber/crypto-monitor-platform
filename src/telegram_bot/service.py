@@ -124,13 +124,15 @@ class TelegramBot:
             elif cmd == "/test":
                 await self.send(chat_id, "✅ Bot operacional")
             elif cmd == "/price":
-                if len(parts) != 2:
-                    raise ValueError("uso: /price BTC")
+                if len(parts) not in {2, 3}:
+                    raise ValueError("uso: /price BTC [venue]")
                 asset = str(parts[1]).upper()
-                r = await self.client.get(f"{MONITOR_URL}/v1/quote/{asset}", params={"venue": "binance"}, timeout=8.0)
+                params = {"venue": parts[2].lower()} if len(parts) == 3 else {"venue": "binance"}
+                r = await self.client.get(f"{MONITOR_URL}/v1/quote/{asset}", params=params, timeout=8.0)
                 r.raise_for_status()
                 q = r.json()
-                await self.send(chat_id, f"💰 <b>{asset}</b> {_fmt_price(float(q['price']))}\n{html.escape(str(q.get('event_time','')))}\nage={q.get('age_seconds','-')}s")
+                venue_str = f" ({q.get('venue')})" if q.get("venue") else ""
+                await self.send(chat_id, f"💰 <b>{asset}</b>{venue_str} {_fmt_price(float(q['price']))}\n{html.escape(str(q.get('event_time','')))}\nage={q.get('age_seconds','-')}s")
             elif cmd == "/watchlist":
                 await self.send(chat_id, "📊 " + (", ".join(list_watchlist()) or "watchlist vazia"))
             elif cmd in {"/monitor", "/unmonitor"}:

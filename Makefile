@@ -1,4 +1,4 @@
-.PHONY: init-data bootstrap preflight pull build up up-monitor down reload reload-flink status storage test docker-test validate smoke backup-catalog logs telegram-logs telegram-test telegram-discover telegram-restart web-logs clean-pyc
+.PHONY: init-data bootstrap preflight pull build up up-monitor down reload reload-flink status storage test docker-test validate smoke backup-catalog logs telegram-logs telegram-test telegram-discover telegram-restart web-logs clean-pyc quote
 
 init-data:
 	mkdir -p data/kafka data/clickhouse data/clickhouse-logs data/garage/meta data/garage/data data/garage/config data/lakekeeper-postgres data/flink/checkpoints data/flink/savepoints data/grafana data/reconcile data/replay data/telegram
@@ -72,3 +72,6 @@ web-logs:
 
 clean-pyc:
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +
+
+quote:
+	curl --noproxy '*' -s "http://127.0.0.1:$${MONITOR_API_PORT:-8081}/v1/quote/$${ASSET:-XMR}" | jq

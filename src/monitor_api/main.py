@@ -69,31 +69,12 @@ def _quote(symbol: str, venue: str) -> dict | None:
         """,
         {"venue": venue.lower(), "symbol": native},
     )
-    if not out:
-        out = rows(
-            """
-            SELECT
-              venue,
-              symbol,
-              argMaxIf(price, tuple(ingest_time_ms, event_time_ms), price IS NOT NULL) AS price,
-              argMaxIf(bid_price, tuple(ingest_time_ms, event_time_ms), bid_price IS NOT NULL) AS bid,
-              argMaxIf(ask_price, tuple(ingest_time_ms, event_time_ms), ask_price IS NOT NULL) AS ask,
-              argMaxIf(quantity, tuple(ingest_time_ms, event_time_ms), quantity IS NOT NULL) AS quantity,
-              argMax(event_time_ms, tuple(ingest_time_ms, event_time_ms)) AS latest_event_time_ms,
-              max(ingest_time_ms) AS latest_ingest_time_ms
-            FROM market.events_hot
-            WHERE venue={venue:String} AND symbol={symbol:String}
-              AND event_type IN ('trade','ticker','book_ticker')
-            GROUP BY venue, symbol
-            LIMIT 1
-            """,
-            {"venue": venue.lower(), "symbol": native},
-        )
     res = _decorate_quote(out[0]) if out else None
-    if res is not None and not res.get("stale"):
+    if res is not None and res.get("price") is not None and not res.get("stale"):
         return res
 
     # If requested venue has no data or is stale, check other configured sources (e.g. kraken)
+    best_candidate: dict | None = None
     try:
         cfg = load_market_config()
         for other_venue in cfg.sources:
@@ -122,14 +103,47 @@ def _quote(symbol: str, venue: str) -> dict | None:
             )
             if other_out:
                 dec = _decorate_quote(other_out[0])
-                if dec and not dec.get("stale"):
-                    return dec
-                if res is None:
-                    res = dec
+                if dec and dec.get("price") is not None:
+                    if not dec.get("stale"):
+                        return dec
+                    if best_candidate is None or (dec.get("ingest_time_ms", 0) > best_candidate.get("ingest_time_ms", 0)):
+                        best_candidate = dec
     except Exception:
         pass
 
-    return res
+    if best_candidate is not None:
+        if res is None or res.get("price") is None or (best_candidate.get("ingest_time_ms", 0) > res.get("ingest_time_ms", 0)):
+            return best_candidate
+
+    if res is not None and res.get("price") is not None:
+        return res
+
+    # Fallback to historical without time window only if no recent data found
+    out_hist = rows(
+        """
+        SELECT
+          venue,
+          symbol,
+          argMaxIf(price, tuple(ingest_time_ms, event_time_ms), price IS NOT NULL) AS price,
+          argMaxIf(bid_price, tuple(ingest_time_ms, event_time_ms), bid_price IS NOT NULL) AS bid,
+          argMaxIf(ask_price, tuple(ingest_time_ms, event_time_ms), ask_price IS NOT NULL) AS ask,
+          argMaxIf(quantity, tuple(ingest_time_ms, event_time_ms), quantity IS NOT NULL) AS quantity,
+          argMax(event_time_ms, tuple(ingest_time_ms, event_time_ms)) AS latest_event_time_ms,
+          max(ingest_time_ms) AS latest_ingest_time_ms
+        FROM market.events_hot
+        WHERE venue={venue:String} AND symbol={symbol:String}
+          AND event_type IN ('trade','ticker','book_ticker')
+        GROUP BY venue, symbol
+        LIMIT 1
+        """,
+        {"venue": venue.lower(), "symbol": native},
+    )
+    if out_hist:
+        hist_dec = _decorate_quote(out_hist[0])
+        if hist_dec and hist_dec.get("price") is not None:
+            return hist_dec
+
+    return best_candidate or res
 
 
 @app.get("/health")

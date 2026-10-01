@@ -25,6 +25,15 @@ class TelegramConfigTest(unittest.TestCase):
             self.assertEqual(r['percent_up'],2.0)
             self.assertEqual(r['low'],82000.0)
 
+    def test_price_config_xmr_auto_kraken(self):
+        with tempfile.TemporaryDirectory() as d:
+            p=Path(d)/'telegram.yaml'
+            p.write_text(yaml.safe_dump({'defaults':{'venue':'binance','quote':'USDT'},'price_alerts':{}}))
+            r=configure_price_alert('XMR', percent_up=2.5, path=p)
+            self.assertEqual(r['venue'],'kraken')
+            self.assertEqual(r['symbol'],'XMR/USD')
+            self.assertEqual(r['percent_up'],2.5)
+
 
 class PriceEngineTest(unittest.TestCase):
     def test_percent_reanchors_after_alert(self):
