@@ -43,6 +43,19 @@ sources:
         self.assertEqual(cfg.resolve_product("kraken", "XMR"), "XMR/USD")
         self.assertEqual(cfg.reload_seconds, 3.0)
 
+    def test_xmr_only_in_kraken_when_in_watchlist(self):
+        p = self._write("""
+watchlist: [BTC, XMR]
+sources:
+  binance: {enabled: true, quote: USDT, products: [], channels: [trade]}
+  coinbase: {enabled: true, quote: USD, products: [], channels: [ticker]}
+  kraken: {enabled: true, quote: USD, products: [], channels: [ticker]}
+""")
+        cfg = load_market_config(p)
+        self.assertEqual(cfg.products_for("binance"), ["BTCUSDT"])
+        self.assertEqual(cfg.products_for("coinbase"), ["BTC-USD"])
+        self.assertEqual(cfg.products_for("kraken"), ["BTC/USD", "XMR/USD"])
+
     def test_explicit_products_override_watchlist(self):
         p = self._write("""
 watchlist: [BTC, ETH]

@@ -22,6 +22,12 @@ class SourceConfig:
     snapshot_limit: int = 1000
 
 
+UNSUPPORTED_ASSETS: dict[str, set[str]] = {
+    "binance": {"XMR"},
+    "coinbase": {"XMR"},
+}
+
+
 @dataclass(frozen=True, slots=True)
 class MarketConfig:
     version: int
@@ -41,13 +47,15 @@ class MarketConfig:
             return []
         if source.products:
             return list(source.products)
+        unsupported = UNSUPPORTED_ASSETS.get(name.lower(), set())
+        assets = [a for a in self.watchlist if a.upper() not in unsupported]
         if name.lower() == "binance":
-            return [f"{asset}{source.quote}".upper().replace("-", "").replace("/", "") for asset in self.watchlist]
+            return [f"{asset}{source.quote}".upper().replace("-", "").replace("/", "") for asset in assets]
         if name.lower() == "coinbase":
-            return [f"{asset}-{source.quote}".upper() for asset in self.watchlist]
+            return [f"{asset}-{source.quote}".upper() for asset in assets]
         if name.lower() == "kraken":
-            return [f"{asset}/{source.quote}".upper() for asset in self.watchlist]
-        return list(self.watchlist)
+            return [f"{asset}/{source.quote}".upper() for asset in assets]
+        return list(assets)
 
     def resolve_product(self, name: str, symbol: str) -> str:
         """Resolve a base asset (BTC) or exchange-native product to the configured product."""
