@@ -16,3 +16,5 @@ price_alerts:
     cooldown_seconds: 60
     percent_up: 2.0
     percent_down: 2.0
+    high: 89000.0
+    low: 84000.0
